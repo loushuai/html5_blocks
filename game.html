@@ -1,0 +1,813 @@
+<!DOCTYPE html
+PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" 
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<head>
+	<title>俄罗斯方块 Developed by LouShuai</title>	
+	<script type="text/javascript" src="jquery.js"></script>
+</head>
+
+<body>
+<center>
+	<div id="container" style="border:1px solid; cursor:none; width:600px; height:650px; background-image:url('img/BG.jpg')">
+        <canvas id="canvas" width="600" height="650" >
+        </canvas>
+    </div>
+	
+	<script type="text/javascript">
+		//常量
+		var pixTop = 50;
+		var pixBottom = 600;
+		var pixLeft = 75;
+		var pixRight = 525;
+		var pixWidth = pixRight - pixLeft;
+		var pixHeight = pixBottom - pixTop;
+		var blockWidth = 10;
+		var blockHeight = 22;
+		var blockSize = 25;
+	
+		var ctx;
+		
+		var curFangkuai = new Object();
+		var nextFangkuai = new Object();
+		
+		//Create images
+		var blockImgs = new Array(7);	
+		
+		var blocks = new Array(); //map
+		
+		var fkNum = 7;
+		var fks = new Array(); //方块的图形
+		
+		var gameloopId;
+		var gameState = 0; // 0: not start, 1: start， 2： over
+		var dropTime = 1000;
+		var dropTimeInt = 95;
+		var sysTime = new Date().getTime();
+		var frameInt = 33;	
+		var textTime = new Date().getTime();
+		var textInt = 600;
+
+		var score = 0;
+		var level = 0;
+		var level0 = 0;
+		
+		//Wait for DOM to load and init game
+		$(document).ready(function(){ 
+			init(); 
+		});
+		
+		function init()
+		{						
+			initSettings();			
+			eventHandle();	
+			initBlocks();
+			initGame();		
+			
+			loadImages();			
+		}		
+		
+		function initGame()
+		{
+			score = 0;
+			level = 0;
+			curFangkuai.type = -1;
+			nextFangkuai.type = -1;
+			gameState = 0;		
+
+			level = level0;
+			dropTime = 1000 - level * dropTimeInt;
+			
+			cleanBlocks();
+			
+			gameloopId = setInterval(mainLoop, 10);
+			sysTime = new Date().getTime(); //初始化系统时间，锁定fps用
+			textTime = new Date().getTime();
+			
+			initFKs();
+			
+			drawBack();
+		}
+		
+		function eventHandle()
+		{					
+			//key			
+			$(document).keydown(function(event)
+			{
+				switch (gameState)
+				{
+				case 1:				
+				
+					if (curFangkuai.type == -1)
+					{
+						return;
+					}
+				
+					if ( (event.which != 37) && (event.which != 38) && (event.which != 39) && (event.which != 40))
+					{
+						return;
+					}				
+				
+					if (event.which == 37) //left
+					{							
+						drawFK(curFangkuai, 0);	
+						if (checkLeft(curFangkuai) == 0)
+						{
+							curFangkuai.x = curFangkuai.x -1;
+						}
+						drawFK(curFangkuai, 1);	
+					}
+					if (event.which == 39) //right
+					{							
+						drawFK(curFangkuai, 0);	
+						if (checkRight(curFangkuai) == 0)
+						{
+							curFangkuai.x = curFangkuai.x +1;
+						}
+						drawFK(curFangkuai, 1);	
+					}
+					if (event.which == 40) //down
+					{							
+						drawFK(curFangkuai, 0);	
+						if (checkBottom(curFangkuai))
+						{
+							drawFK(curFangkuai, 1);	
+							curFangkuai.type = -1; //new 一个
+							handleScore();
+							return;
+						}
+						else
+						{
+							curFangkuai.y = curFangkuai.y +1;
+						}
+						drawFK(curFangkuai, 1);	
+					}
+					if (event.which == 38) //up
+					{
+						//flip
+						drawFK(curFangkuai, 0);
+						if (checkDir(curFangkuai, curFangkuai.dir+1) == 0)
+						{
+							curFangkuai.dir = (curFangkuai.dir + 1) % fks[curFangkuai.type].dirs;
+						}
+						drawFK(curFangkuai, 1);	
+					}
+				break;
+				case 2:
+					if (event.which == 13)
+					{
+						gameState = 0;
+						initGame();
+					}
+				break;
+				default:
+				
+				break;
+				}
+			});
+		}		
+		
+		function initFKs()
+		{
+			var i;					
+			
+			for (i = 0; i < fkNum; i++)
+			{
+				fks[i] = new Object;
+				fks[i].blocks = new Array();
+				fks[i].blocks[0] = new Array(); //四个方向
+				fks[i].blocks[1] = new Array(); 
+				fks[i].blocks[2] = new Array(); 
+				fks[i].blocks[3] = new Array();
+			}
+			
+			//
+			//    *
+			//    *
+			//	  *
+			//	  *
+			//
+			fks[0].dirs = 2; // 0, 1
+			fks[0].blocks[0][0] = 0x00 | 0x01;
+			fks[0].blocks[0][1] = 0x10 | 0x01;
+			fks[0].blocks[0][2] = 0x20 | 0x01;
+			fks[0].blocks[0][3] = 0x30 | 0x01;
+			//
+			//    * * * *
+			//
+			fks[0].blocks[1][0] = 0x00 | 0x00;
+			fks[0].blocks[1][1] = 0x00 | 0x01;
+			fks[0].blocks[1][2] = 0x00 | 0x02;
+			fks[0].blocks[1][3] = 0x00 | 0x03;
+			
+			//
+			//    * *
+			//    * *
+			//
+			fks[1].dirs = 1; // 0
+			fks[1].blocks[0][0] = 0x00 | 0x00;
+			fks[1].blocks[0][1] = 0x00 | 0x01;
+			fks[1].blocks[0][2] = 0x10 | 0x00;
+			fks[1].blocks[0][3] = 0x10 | 0x01;
+
+			//
+			//      *
+			//    * * *
+			//
+			fks[2].dirs = 4; // 0
+			fks[2].blocks[0][0] = 0x00 | 0x01;
+			fks[2].blocks[0][1] = 0x10 | 0x00;
+			fks[2].blocks[0][2] = 0x10 | 0x01;
+			fks[2].blocks[0][3] = 0x10 | 0x02;
+			//
+			//      *
+			//      * *
+			//      *
+			fks[2].dirs = 4; // 0
+			fks[2].blocks[1][0] = 0x00 | 0x00;
+			fks[2].blocks[1][1] = 0x10 | 0x00;
+			fks[2].blocks[1][2] = 0x10 | 0x01;
+			fks[2].blocks[1][3] = 0x20 | 0x00;
+			//
+			//       
+			//    * * *
+			//      *
+			fks[2].dirs = 4; // 0
+			fks[2].blocks[2][0] = 0x00 | 0x00;
+			fks[2].blocks[2][1] = 0x00 | 0x01;
+			fks[2].blocks[2][2] = 0x00 | 0x02;
+			fks[2].blocks[2][3] = 0x10 | 0x01;
+			//
+			//      *
+			//    * *  
+			//      *
+			fks[2].dirs = 4; // 0
+			fks[2].blocks[3][0] = 0x00 | 0x01;
+			fks[2].blocks[3][1] = 0x10 | 0x00;
+			fks[2].blocks[3][2] = 0x10 | 0x01;
+			fks[2].blocks[3][3] = 0x20 | 0x01;
+			
+			//
+			//    * *
+			//      * *
+			//       
+			fks[3].dirs = 2; // 0
+			fks[3].blocks[0][0] = 0x00 | 0x00;
+			fks[3].blocks[0][1] = 0x00 | 0x01;
+			fks[3].blocks[0][2] = 0x10 | 0x01;
+			fks[3].blocks[0][3] = 0x10 | 0x02;
+			//
+			//      *
+			//    * *  
+			//    *  
+			fks[3].dirs = 2; // 0
+			fks[3].blocks[1][0] = 0x00 | 0x01;
+			fks[3].blocks[1][1] = 0x10 | 0x00;
+			fks[3].blocks[1][2] = 0x10 | 0x01;
+			fks[3].blocks[1][3] = 0x20 | 0x00;
+			
+			//
+			//      * *
+			//    * *  
+			//       
+			fks[4].dirs = 2; // 0
+			fks[4].blocks[0][0] = 0x00 | 0x01;
+			fks[4].blocks[0][1] = 0x00 | 0x02;
+			fks[4].blocks[0][2] = 0x10 | 0x00;
+			fks[4].blocks[0][3] = 0x10 | 0x01;
+			//
+			//      * 
+			//      * *
+			//        *
+			fks[4].dirs = 2; // 0
+			fks[4].blocks[1][0] = 0x00 | 0x00;
+			fks[4].blocks[1][1] = 0x10 | 0x00;
+			fks[4].blocks[1][2] = 0x10 | 0x01;
+			fks[4].blocks[1][3] = 0x20 | 0x01;			
+			
+			//
+			//      * 
+			//      *  
+			//      * *
+			fks[5].dirs = 4; // 0
+			fks[5].blocks[0][0] = 0x00 | 0x00;
+			fks[5].blocks[0][1] = 0x10 | 0x00;
+			fks[5].blocks[0][2] = 0x20 | 0x00;
+			fks[5].blocks[0][3] = 0x20 | 0x01;	
+			//
+			//        *
+			//    * * *
+			//         
+			fks[5].dirs = 4; // 0
+			fks[5].blocks[1][0] = 0x00 | 0x02;
+			fks[5].blocks[1][1] = 0x10 | 0x00;
+			fks[5].blocks[1][2] = 0x10 | 0x01;
+			fks[5].blocks[1][3] = 0x10 | 0x02;	
+			//
+			//      * *
+			//        *
+			//        * 
+			fks[5].dirs = 4; // 0
+			fks[5].blocks[2][0] = 0x00 | 0x00;
+			fks[5].blocks[2][1] = 0x00 | 0x01;
+			fks[5].blocks[2][2] = 0x10 | 0x01;
+			fks[5].blocks[2][3] = 0x20 | 0x01;	
+			//
+			//      * * *
+			//      *  
+			//          
+			fks[5].dirs = 4; // 0
+			fks[5].blocks[3][0] = 0x00 | 0x00;
+			fks[5].blocks[3][1] = 0x00 | 0x01;
+			fks[5].blocks[3][2] = 0x00 | 0x02;
+			fks[5].blocks[3][3] = 0x10 | 0x00;	
+			
+			//        *
+			//        *  
+			//      * *
+			//          
+			fks[6].dirs = 4; // 0
+			fks[6].blocks[0][0] = 0x00 | 0x01;
+			fks[6].blocks[0][1] = 0x10 | 0x01;
+			fks[6].blocks[0][2] = 0x20 | 0x00;
+			fks[6].blocks[0][3] = 0x20 | 0x01;
+			//         
+			//      *    
+			//      * * *
+			//          
+			fks[6].dirs = 4; // 0
+			fks[6].blocks[1][0] = 0x00 | 0x00;
+			fks[6].blocks[1][1] = 0x10 | 0x00;
+			fks[6].blocks[1][2] = 0x10 | 0x01;
+			fks[6].blocks[1][3] = 0x10 | 0x02;
+			//         
+			//      * *  
+			//      *    
+			//      *   
+			fks[6].dirs = 4; // 0
+			fks[6].blocks[2][0] = 0x00 | 0x00;
+			fks[6].blocks[2][1] = 0x00 | 0x01;
+			fks[6].blocks[2][2] = 0x10 | 0x00;
+			fks[6].blocks[2][3] = 0x20 | 0x00;
+			//         
+			//           
+			//    * * *  
+			//        * 
+			fks[6].dirs = 4; // 0
+			fks[6].blocks[3][0] = 0x00 | 0x00;
+			fks[6].blocks[3][1] = 0x00 | 0x01;
+			fks[6].blocks[3][2] = 0x00 | 0x02;
+			fks[6].blocks[3][3] = 0x10 | 0x02;
+		}
+		
+		function initSettings()
+		{			
+			//Get a handle to the 2d context of the canvas
+			ctx = document.getElementById('canvas').getContext('2d'); 
+		}
+		
+		function loadImages()
+		{
+			var i = 1;
+			for (i = 1; i <= fkNum; i++)
+			{
+				blockImgs[i-1] = new Image();
+				blockImgs[i-1].src = "img/block" + i +".jpg";
+			}
+			
+			blockImgs[6].onload = function() {mainLoop()};
+		}
+		
+		function drawBack()
+		{			
+			ctx.fillStyle = "#000000";
+			ctx.fillRect(pixLeft, pixTop, pixWidth, pixHeight);	
+			ctx.strokeStyle = "#FFFFFF";
+			ctx.beginPath();
+			ctx.moveTo(pixLeft+250, pixTop);
+			ctx.lineTo(pixLeft+250, pixBottom);
+			ctx.stroke();
+		}
+		
+		function mainLoop()
+		{
+			if ((new Date().getTime() - sysTime) > frameInt) //刷新时间
+			{
+				paint();
+				sysTime = new Date().getTime();
+			}
+			
+			if (gameState == 0)
+			{	
+				//键盘时间
+				$(document).keypress(function(event)
+				{ 
+					if (event.which == 32)
+					{
+						gameState = 1;
+					}
+				});
+				
+				if ((new Date().getTime() - textTime) < textInt)
+				{
+					return;
+				}				
+				
+				//等待按空格键开始
+				ctx.fillStyle = "#FFFFFF";
+				ctx.font = "bold 12px/20px arial,sans-serif";
+				ctx.fillText("PRESS SPACE TO START", 130, 550);
+				
+				if ((new Date().getTime() - textTime) > 2*textInt)
+				{
+					textTime = new Date().getTime();
+				}
+			}
+			else if (gameState == 1)
+			{		
+				nextFrame();
+				
+				drawSideBar();
+			}
+			else if (gameState == 2)
+			{
+				ctx.fillStyle = "#FFFFFF";
+				ctx.font = "bold 22px/30px arial,sans-serif";
+				ctx.fillText("GAME OVER!", 350, 500);
+				ctx.font = "bold 12px/20px arial,sans-serif";
+				ctx.fillText("PRESS ENTER TO CONTINUE", 340, 520);				
+			}
+			else
+			{
+			
+			}
+		}
+		
+		function drawBlock(y, x, type)
+		{
+			var xx;
+			var yy;
+		
+			if (type < 0)
+			{
+				return;
+			}
+			
+			if (type > 6)
+			{
+				return;
+			}
+			
+			xx = pixLeft + blockSize * x;
+			yy = pixTop + blockSize * y;
+			
+			ctx.drawImage(blockImgs[type], xx, yy);
+		}		
+		
+		function drawBlocks()
+		{
+			var i;
+			var j;
+			
+			for (j = 0; j < blockHeight; j++)
+			{ 
+				for (i = 0; i < blockWidth; i++)
+				{
+					drawBlock(j, i, blocks[j][i]);
+				}
+			}
+		}
+		
+		function initBlocks()
+		{
+			var j = 0;			
+			
+			for (j = 0; j < blockHeight; j++)
+			{
+				blocks[j] = new Array();
+			}
+		}
+		
+		function cleanBlocks()
+		{
+			var i;
+			var j;
+			
+			for (j = 0; j < blockHeight; j++)
+			{				
+				for (i = 0; i < blockWidth; i++)
+				{
+					blocks[j][i] = -1;
+				}
+			}
+		}
+		
+		function nextFrame()
+		{		
+			if (curFangkuai.type == -1)
+			{
+				newFK();
+			}
+			else
+			{			
+				updateFK();
+			}
+		}
+		
+		function newFK()
+		{
+			if (nextFangkuai.type == -1)
+			{
+				curFangkuai.type = Math.round(Math.random() * (fkNum - 1));
+				curFangkuai.x = 3;
+				curFangkuai.y = 0;
+				curFangkuai.time = new Date().getTime();
+				curFangkuai.dir = Math.round(Math.random() * (fks[curFangkuai.type].dirs - 1));
+			}
+			else
+			{
+				curFangkuai.type = nextFangkuai.type;
+				curFangkuai.dir = nextFangkuai.dir;
+				curFangkuai.x = 3;
+				curFangkuai.y = 0;
+				curFangkuai.time = new Date().getTime();
+			}
+			
+			if (checkDir(curFangkuai, curFangkuai.dir))
+			{
+				//游戏结束
+				gameState = 2;
+			}
+			
+			nextFangkuai.type = Math.round(Math.random() * (fkNum - 1));
+			nextFangkuai.dir = Math.round(Math.random() * (fks[curFangkuai.type].dirs - 1));
+		}
+		
+		function updateFK()
+		{		
+		
+			drawFK(curFangkuai, 0);		
+			
+			
+			if ((new Date().getTime() - curFangkuai.time) > dropTime)
+			{
+				if (checkBottom(curFangkuai))
+				{
+					drawFK(curFangkuai, 1);
+					curFangkuai.type = -1; //new 一个
+					handleScore();
+					return;
+				}
+				else
+				{
+					curFangkuai.time = new Date().getTime();
+					curFangkuai.y = curFangkuai.y + 1;
+				}
+			}
+			
+			drawFK(curFangkuai, 1);
+			
+		}
+		
+		function drawFK(fk, flag)
+		{		
+		
+			var i;
+			var x;
+			var y;
+			
+			var type = fk.type;
+			
+			var dir = fk.dir % fks[type].dirs;				
+			
+			for (i = 0; i < 4; i++)
+			{
+				y = (fks[type].blocks[dir][i] & 0xf0) >> 4;
+				x = fks[type].blocks[dir][i] & 0x0f;
+				
+				blocks[fk.y+y][fk.x+x] = flag > 0 ? type : -1;
+			}
+		}		
+		
+		function paint()
+		{
+			drawBack();
+			drawBlocks();
+		}
+		
+		//检测翻转
+		function checkDir(fk, destDir)
+		{
+			var i;			
+			var x;
+			var y;			
+			var type = fk.type;			
+			var dir = destDir % fks[type].dirs;
+			
+			for (i = 0; i < 4; i++)
+			{
+				y = (fks[type].blocks[dir][i] & 0xf0) >> 4;
+				x = fks[type].blocks[dir][i] & 0x0f;
+				
+				if ((fk.y+y) >= blockHeight)
+				{
+					break;
+				}
+				
+				if ((fk.x+x) < 0)
+				{
+					break;
+				}
+				
+				if ((fk.x+x) >= blockWidth)
+				{
+					break;
+				}
+				
+				if (blocks[fk.y+y][fk.x+x] != -1)
+				{
+					break;
+				}
+			}
+			
+			return i==4 ? 0 : 1; //0:empty, 1:something
+		}
+		
+		//检查每个块下面是否都有别的块
+		function checkBottom(fk)
+		{
+			var i;			
+			var x;
+			var y;			
+			var type = fk.type;			
+			var dir = fk.dir % fks[type].dirs;
+
+			//drawFK(fk, 0);
+			
+			for (i = 0; i < 4; i++)
+			{
+				y = (fks[type].blocks[dir][i] & 0xf0) >> 4;
+				x = fks[type].blocks[dir][i] & 0x0f;
+				
+				if ((fk.y+y+1) >= blockHeight)
+				{
+					break;
+				}
+				
+				if (blocks[fk.y+y+1][fk.x+x] != -1)
+				{
+					break;
+				}
+			}
+			
+			//drawFK(fk, 1);
+			
+			return i==4 ? 0 : 1; //0:empty, 1:something
+		}
+		
+		function checkLeft(fk)
+		{
+			var i;			
+			var x;
+			var y;			
+			var type = fk.type;			
+			var dir = fk.dir % fks[type].dirs;
+
+			//drawFK(fk, 0);
+			
+			for (i = 0; i < 4; i++)
+			{
+				y = (fks[type].blocks[dir][i] & 0xf0) >> 4;
+				x = fks[type].blocks[dir][i] & 0x0f;
+				
+				if ((fk.x+x-1) < 0)
+				{
+					break;
+				}
+				
+				if (blocks[fk.y+y][fk.x+x-1] != -1)
+				{
+					break;
+				}
+			}
+			
+			//drawFK(fk, 1);
+			
+			return i==4 ? 0 : 1; //0:empty, 1:something
+		}
+		
+		function checkRight(fk)
+		{
+			var i;			
+			var x;
+			var y;			
+			var type = fk.type;			
+			var dir = fk.dir % fks[type].dirs;
+
+			//drawFK(fk, 0);
+			
+			for (i = 0; i < 4; i++)
+			{
+				y = (fks[type].blocks[dir][i] & 0xf0) >> 4;
+				x = fks[type].blocks[dir][i] & 0x0f;
+				
+				if ((fk.x+x+1) >= blockWidth)
+				{
+					break;
+				}
+				
+				if (blocks[fk.y+y][fk.x+x+1] != -1)
+				{
+					break;
+				}
+			}
+			
+			//drawFK(fk, 1);
+			
+			return i==4 ? 0 : 1; //0:empty, 1:something
+		}
+		
+		function showFK(fk, ox, oy)
+		{
+			var i;
+			var x;
+			var y;
+			var xx;
+			var yy;
+			var type = fk.type;			
+			var dir = fk.dir % fks[type].dirs;
+			
+			for (i = 0; i < 4; i++)
+			{
+				y = (fks[type].blocks[dir][i] & 0xf0) >> 4;
+				x = fks[type].blocks[dir][i] & 0x0f;
+				
+				xx = ox + x * blockSize;
+				yy = oy + y * blockSize;
+				
+				ctx.drawImage(blockImgs[type], xx, yy);
+			}
+		}
+		
+		function handleScore()
+		{
+			var i;
+			var j;
+			var k;
+			var n = 0;
+			
+			for (j = blockHeight - 1; j >= 0; )
+			{
+				for (i = 0; i < blockWidth; i++)
+				{
+					if (blocks[j][i] == -1)
+					{
+						break;
+					}
+				}
+				
+				if (i == blockWidth)
+				{
+					//减一层
+					n++;
+					for (k = j - 1; k >= 0; k--)
+					{
+						for (i = 0; i < blockWidth; i++)
+						{
+							blocks[k+1][i] = blocks[k][i];
+						}
+					}
+					
+					continue;
+				}
+				
+				j--;
+			}
+			
+			if (n>0)
+			{
+				score = score + n*100 + (n-1)*100;
+				
+				level = Math.floor(score / 1000) + level0;
+				level = level % 10;
+				
+				dropTime = 1000 - level * dropTimeInt;
+			}
+		}
+		
+		function drawSideBar()
+		{
+			//显示预览
+			if (nextFangkuai.type != -1)
+			{
+				showFK(nextFangkuai, 400, 150);
+			}
+			
+			ctx.fillStyle = "#FFFFFF";
+			ctx.font = "bold 22px/30px arial,sans-serif";
+			ctx.fillText("SCORE: " + score, 340, 320);
+			ctx.fillText("LEVEL:  " + level, 340, 400);
+		}
+	</script>
+</center>
+</body>
